@@ -1,33 +1,111 @@
-#include <stdio.h>
-
 #include "FreeRTOS.h"
-#include "task.h"
-
 #include "board_io.h"
 #include "common_macros.h"
+#include "gpio_intr.h"
+#include "lpc40xx.h"
+#include "lpc_peripherals.h"
 #include "periodic_scheduler.h"
+#include "semphr.h"
 #include "sj2_cli.h"
+#include "task.h"
+#include <stdio.h>
 
 // 'static' to make these functions 'private' to this file
 static void create_blinky_tasks(void);
 static void create_uart_task(void);
 static void blink_task(void *params);
 static void uart_task(void *params);
+static SemaphoreHandle_t switch_pressed_signal;
+
+static uint8_t SW2 = 30;
+static uint8_t led2 = 24;
+
+// Used in 1 and 2
+void sleep_on_sem_task(void *p) {
+  // fprintf("status : %d", xSemaphoreTake(switch_pressed_signal, portMAX_DELAY));
+  while (1) {
+    if (xSemaphoreTake(switch_pressed_signal, 1000)) {
+      vTaskDelay(100);
+      LPC_GPIO1->SET = (1 << led2);
+      vTaskDelay(100);
+      LPC_GPIO1->CLR = (1 << led2);
+    }
+  }
+}
 
 int main(void) {
   create_blinky_tasks();
+  // create_blinky_tasks();
   create_uart_task();
-
-  // If you have the ESP32 wifi module soldered on the board, you can try uncommenting this code
-  // See esp32/README.md for more details
-  // uart3_init();                                                                     // Also include:  uart3_init.h
   // xTaskCreate(esp32_tcp_hello_world_task, "uart3", 1000, NULL, PRIORITY_LOW, NULL); // Include esp32_task.h
 
   puts("Starting RTOS");
+  // Part 0
+  // LPC_GPIO0->DIR &= ~(1 << SW2);
+  // LPC_GPIOINT->IO0IntEnF |= (1 << SW2);
+  // lpc_peripheral__enable_interrupt(54, gpio_interrupt, "gpio_SW2");
+  // NVIC_EnableIRQ(GPIO_IRQn);
+  // xTaskCreate(led_blinking, "led2", 4096 / sizeof(void *), NULL, 1, NULL);
+
+  // Used in both
+  switch_pressed_signal = xSemaphoreCreateBinary();
+  xTaskCreate(sleep_on_sem_task, "sem", (512U * 4) / sizeof(void *), NULL, PRIORITY_LOW, NULL);
+
+  // Part 1
+
+  configure_your_gpio_interrupt();
+  NVIC_EnableIRQ(GPIO_IRQn);
+
+  // Part 2
+  /*
+  gpio0__attach_interrupt(29, GPIO_INTR__FALLING_EDGE, interrupt_from_pin_29);
+  gpio0__attach_interrupt(30, GPIO_INTR__RISING_EDGE, interrupt_from_pin_30);
+  lpc_peripheral__enable_interrupt(LPC_PERIPHERAL__GPIO, gpio0__interrupt_dispatcher, "Interrupt");
+  */
   vTaskStartScheduler(); // This function never returns unless RTOS scheduler runs out of memory and fails
 
   return 0;
 }
+
+// Part 0
+// static void led_blinking(void) {
+//   while (1) {
+//     vTaskDelay(100);
+//     LPC_GPIO1->SET = (1 << led2);
+//     vTaskDelay(100);
+//     LPC_GPIO1->CLR = (1 << led2);
+//   }
+// }
+// void gpio_interrupt(void) { LPC_GPIOINT->IO0IntClr |= (1 << SW2); }
+
+// Part 1
+void clear_gpio_interrupt(void) { LPC_GPIOINT->IO0IntClr |= (1 << SW2); }
+
+void gpio_interrupt(void) {
+  fprintf(stderr, "ISR Entry\n");
+  xSemaphoreGiveFromISR(switch_pressed_signal, NULL);
+  clear_gpio_interrupt();
+}
+void configure_your_gpio_interrupt() {
+  LPC_GPIO0->DIR &= ~(1 << SW2);        // Setting SW2 to input
+  LPC_GPIOINT->IO0IntEnF |= (1 << SW2); // SW2 trigger at falling edge
+  lpc_peripheral__enable_interrupt(LPC_PERIPHERAL__GPIO, gpio_interrupt, "gpio_SW2");
+}
+
+// Part 2
+/*
+void interrupt_from_pin_29(void)
+{
+  fprintf(stderr, "ISR Entry from pin 29\n");
+  xSemaphoreGiveFromISR(switch_pressed_signal, NULL);
+}
+
+void interrupt_from_pin_30(void)
+{
+  fprintf(stderr, "ISR Entry from pin 30\n");
+  xSemaphoreGiveFromISR(switch_pressed_signal, NULL);
+}
+*/
 
 static void create_blinky_tasks(void) {
   /**
