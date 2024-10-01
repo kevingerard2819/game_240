@@ -11,7 +11,7 @@
 #include "sj2_cli.h"
 #include "gpio_intr.h"
 
-// 'static' to make these functions 'private' to this file
+
 static void create_blinky_tasks(void);
 static void create_uart_task(void);
 static void blink_task(void *params);
