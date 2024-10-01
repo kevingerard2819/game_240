@@ -1,14 +1,15 @@
+
+#include <stdio.h>
 #include "FreeRTOS.h"
+#include "task.h"
 #include "board_io.h"
 #include "common_macros.h"
-#include "gpio_intr.h"
 #include "lpc40xx.h"
 #include "lpc_peripherals.h"
 #include "periodic_scheduler.h"
 #include "semphr.h"
 #include "sj2_cli.h"
-#include "task.h"
-#include <stdio.h>
+#include "gpio_intr.h"
 
 // 'static' to make these functions 'private' to this file
 static void create_blinky_tasks(void);
@@ -22,7 +23,7 @@ static uint8_t led2 = 24;
 
 // Used in 1 and 2
 void sleep_on_sem_task(void *p) {
-  // fprintf("status : %d", xSemaphoreTake(switch_pressed_signal, portMAX_DELAY));
+  fprintf("status : %d", xSemaphoreTake(switch_pressed_signal, portMAX_DELAY));
   while (1) {
     if (xSemaphoreTake(switch_pressed_signal, 1000)) {
       vTaskDelay(100);
@@ -32,6 +33,19 @@ void sleep_on_sem_task(void *p) {
     }
   }
 }
+//PART 2 
+// def of pin29_isr and pin30_isr
+void pin29_isr(void) {
+  fprintf(stderr, "ISR Entry from pin 29\n");
+  xSemaphoreGiveFromISR(switch_pressed_signal, NULL);
+}
+
+void pin30_isr(void) {
+  fprintf(stderr, "ISR Entry from pin 30\n");
+  xSemaphoreGiveFromISR(switch_pressed_signal, NULL);
+}
+
+// Main function here 
 
 int main(void) {
   create_blinky_tasks();
@@ -47,21 +61,21 @@ int main(void) {
   // NVIC_EnableIRQ(GPIO_IRQn);
   // xTaskCreate(led_blinking, "led2", 4096 / sizeof(void *), NULL, 1, NULL);
 
-  // Used in both
+  // Used in both 
   switch_pressed_signal = xSemaphoreCreateBinary();
   xTaskCreate(sleep_on_sem_task, "sem", (512U * 4) / sizeof(void *), NULL, PRIORITY_LOW, NULL);
 
   // Part 1
-
+  /*
   configure_your_gpio_interrupt();
   NVIC_EnableIRQ(GPIO_IRQn);
-
-  // Part 2
-  /*
-  gpio0__attach_interrupt(29, GPIO_INTR__FALLING_EDGE, interrupt_from_pin_29);
-  gpio0__attach_interrupt(30, GPIO_INTR__RISING_EDGE, interrupt_from_pin_30);
-  lpc_peripheral__enable_interrupt(LPC_PERIPHERAL__GPIO, gpio0__interrupt_dispatcher, "Interrupt");
   */
+  // Part 2
+
+  gpio0__attach_interrupt(29, GPIO_INTR__FALLING_EDGE, pin29_isr);
+  gpio0__attach_interrupt(30, GPIO_INTR__RISING_EDGE, pin30_isr);
+  lpc_peripheral__enable_interrupt(LPC_PERIPHERAL__GPIO, gpio0__interrupt_dispatcher, "Interrupt");
+
   vTaskStartScheduler(); // This function never returns unless RTOS scheduler runs out of memory and fails
 
   return 0;
@@ -79,6 +93,7 @@ int main(void) {
 // void gpio_interrupt(void) { LPC_GPIOINT->IO0IntClr |= (1 << SW2); }
 
 // Part 1
+/*
 void clear_gpio_interrupt(void) { LPC_GPIOINT->IO0IntClr |= (1 << SW2); }
 
 void gpio_interrupt(void) {
@@ -92,20 +107,8 @@ void configure_your_gpio_interrupt() {
   lpc_peripheral__enable_interrupt(LPC_PERIPHERAL__GPIO, gpio_interrupt, "gpio_SW2");
 }
 
-// Part 2
-/*
-void interrupt_from_pin_29(void)
-{
-  fprintf(stderr, "ISR Entry from pin 29\n");
-  xSemaphoreGiveFromISR(switch_pressed_signal, NULL);
-}
-
-void interrupt_from_pin_30(void)
-{
-  fprintf(stderr, "ISR Entry from pin 30\n");
-  xSemaphoreGiveFromISR(switch_pressed_signal, NULL);
-}
 */
+// Part 2
 
 static void create_blinky_tasks(void) {
   /**
