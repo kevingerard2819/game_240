@@ -1,3 +1,5 @@
+Assignment multiple tasks
+baud rate setting : 38400
 code :
 #include "FreeRTOS.h"
 #include "task.h"
@@ -54,6 +56,6 @@ As per the calculations the baudrate si 38400 bits per second  which is  3840 by
 tick time: 1ms
 This behavior is consistent with the principles of RTOS scheduling, ensuring that higher priority tasks run first and that equal priority tasks share CPU time equally.
 
-![Screenshot of Same priority](images/same_priority.png)
+![Screenshot of Same priority](Users/spartan/sjtwo-c-3/images/different.png)
 
-![Screenshot of Differet  priority](images/different.png)
+![Screenshot of Differet  priority](Users/spartan/sjtwo-c-3/images/same_priority.png)
