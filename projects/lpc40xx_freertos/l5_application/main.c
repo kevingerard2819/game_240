@@ -1,115 +1,169 @@
 
-#include <stdio.h>
 #include "FreeRTOS.h"
-#include "task.h"
 #include "board_io.h"
 #include "common_macros.h"
+#include "gpio_lab_4.h"
 #include "lpc40xx.h"
-#include "lpc_peripherals.h"
 #include "periodic_scheduler.h"
 #include "semphr.h"
 #include "sj2_cli.h"
-#include "gpio_intr.h"
+#include "task.h"
+#include <stdio.h>
 
+static SemaphoreHandle_t switch_press_indication;
 
+// 'static' to make these functions 'private' to this file
 static void create_blinky_tasks(void);
 static void create_uart_task(void);
 static void blink_task(void *params);
 static void uart_task(void *params);
-static SemaphoreHandle_t switch_pressed_signal;
+void led_task(void *params);
+void switch_task(void *params);
+void led_task_sem(void *params);
+void led_task_bonus(void *task_parameter);
 
-static uint8_t SW2 = 30;
-static uint8_t led2 = 24;
+typedef struct {
+  /* First get gpio0 driver to work only, and if you finish it
+   * you can do the extra credit to also make it work for other Ports
+   */
+  // uint8_t port;
 
-// Used in 1 and 2
-void sleep_on_sem_task(void *p) {
-  fprintf("status : %d", xSemaphoreTake(switch_pressed_signal, portMAX_DELAY));
-  while (1) {
-    if (xSemaphoreTake(switch_pressed_signal, 1000)) {
-      vTaskDelay(100);
-      LPC_GPIO1->SET = (1 << led2);
-      vTaskDelay(100);
-      LPC_GPIO1->CLR = (1 << led2);
-    }
-  }
-}
-//PART 2 
-// def of pin29_isr and pin30_isr
-void pin29_isr(void) {
-  fprintf(stderr, "ISR Entry from pin 29\n");
-  xSemaphoreGiveFromISR(switch_pressed_signal, NULL);
-}
-
-void pin30_isr(void) {
-  fprintf(stderr, "ISR Entry from pin 30\n");
-  xSemaphoreGiveFromISR(switch_pressed_signal, NULL);
-}
-
-// Main function here 
+  uint8_t pin;
+} port_pin_s;
 
 int main(void) {
   create_blinky_tasks();
   // create_blinky_tasks();
   create_uart_task();
+
+  // If you have the ESP32 wifi module soldered on the board, you can try uncommenting this code
+  // See esp32/README.md for more details
+  // uart3_init();                                                                     // Also include:  uart3_init.h
   // xTaskCreate(esp32_tcp_hello_world_task, "uart3", 1000, NULL, PRIORITY_LOW, NULL); // Include esp32_task.h
 
   puts("Starting RTOS");
+
   // Part 0
-  // LPC_GPIO0->DIR &= ~(1 << SW2);
-  // LPC_GPIOINT->IO0IntEnF |= (1 << SW2);
-  // lpc_peripheral__enable_interrupt(54, gpio_interrupt, "gpio_SW2");
-  // NVIC_EnableIRQ(GPIO_IRQn);
-  // xTaskCreate(led_blinking, "led2", 4096 / sizeof(void *), NULL, 1, NULL);
+  // xTaskCreate(led_task, "led1", 2048 / sizeof(void *), NULL, PRIORITY_LOW, NULL);
 
-  // Used in both 
-  switch_pressed_signal = xSemaphoreCreateBinary();
-  xTaskCreate(sleep_on_sem_task, "sem", (512U * 4) / sizeof(void *), NULL, PRIORITY_LOW, NULL);
-
-  // Part 1
-  /*
-  configure_your_gpio_interrupt();
-  NVIC_EnableIRQ(GPIO_IRQn);
-  */
   // Part 2
+  /*
+  static port_pin_s led1 = {26};
+  static port_pin_s led2 = {24};
+  xTaskCreate(led_task, "led1", 2048 / sizeof(void *), &led1, 1, NULL);
+  xTaskCreate(led_task, "led2", 2048 / sizeof(void *), &led2, 1, NULL);
+  */
+  // part 3
+  /*
+  switch_press_indication = xSemaphoreCreateBinary();
+  static port_pin_s switch1 = {15};
+  static port_pin_s led2 = {24};
+  xTaskCreate(switch_task, "sw1", 2048 / sizeof(void *), &switch1, 2, NULL);
+  xTaskCreate(led_task_sem, "led1", 2048 / sizeof(void *), &led2, 1, NULL);
 
-  gpio0__attach_interrupt(29, GPIO_INTR__FALLING_EDGE, pin29_isr);
-  gpio0__attach_interrupt(30, GPIO_INTR__RISING_EDGE, pin30_isr);
-  lpc_peripheral__enable_interrupt(LPC_PERIPHERAL__GPIO, gpio0__interrupt_dispatcher, "Interrupt");
+
+ */
+  switch_press_indication = xSemaphoreCreateBinary();
+  static port_pin_s switch1 = {15};
+  static port_pin_s led2 = {24};
+  xTaskCreate(switch_task, "sw1", 2048 / sizeof(void *), &switch1, 2, NULL);
+  xTaskCreate(led_task_bonus, "led1", 2048 / sizeof(void *), &led2, 1, NULL);
 
   vTaskStartScheduler(); // This function never returns unless RTOS scheduler runs out of memory and fails
 
   return 0;
 }
 
-// Part 0
-// static void led_blinking(void) {
-//   while (1) {
-//     vTaskDelay(100);
-//     LPC_GPIO1->SET = (1 << led2);
-//     vTaskDelay(100);
-//     LPC_GPIO1->CLR = (1 << led2);
-//   }
-// }
-// void gpio_interrupt(void) { LPC_GPIOINT->IO0IntClr |= (1 << SW2); }
-
-// Part 1
+// Part 0 : Function for basic led blinking task (LED 1)
 /*
-void clear_gpio_interrupt(void) { LPC_GPIOINT->IO0IntClr |= (1 << SW2); }
-
-void gpio_interrupt(void) {
-  fprintf(stderr, "ISR Entry\n");
-  xSemaphoreGiveFromISR(switch_pressed_signal, NULL);
-  clear_gpio_interrupt();
+void led_task(void *params) {
+ LPC_GPIO1->DIR |= (1 << 26);
+ while (1) {
+   LPC_GPIO1->PIN &= ~(1 << 26);
+   vTaskDelay(500);
+   LPC_GPIO1->PIN |= (1 << 26);
+   vTaskDelay(500);
+ }
 }
-void configure_your_gpio_interrupt() {
-  LPC_GPIO0->DIR &= ~(1 << SW2);        // Setting SW2 to input
-  LPC_GPIOINT->IO0IntEnF |= (1 << SW2); // SW2 trigger at falling edge
-  lpc_peripheral__enable_interrupt(LPC_PERIPHERAL__GPIO, gpio_interrupt, "gpio_SW2");
-}
-
 */
-// Part 2
+// Part 2 : Using parameters passed to function
+/*
+void led_task(void *task_parameter) {
+ const port_pin_s *led = (port_pin_s *)(task_parameter);
 
+
+ while (true) {
+   gpio1__set_high(led->pin);
+   vTaskDelay(100);
+
+
+   gpio1__set_low(led->pin);
+   vTaskDelay(100);
+ }
+}
+*/
+/*
+// Part 3 : Semaphores
+void led_task_sem(void *task_parameter) {
+ const port_pin_s *led = (port_pin_s *)(task_parameter);
+ while (true) {
+   if (xSemaphoreTake(switch_press_indication, 1000)) {
+     gpio1__set_high(led->pin);
+     vTaskDelay(100);
+     gpio1__set_low(led->pin);
+     vTaskDelay(100);
+   } else {
+     puts("Timeout: No switch press indication for 1000ms");
+   }
+ }
+}
+*/
+void switch_task(void *task_parameter) {
+  port_pin_s *switch1 = (port_pin_s *)task_parameter;
+  gpio1__set_as_input(switch1->pin);
+  while (true) {
+    if (gpio1__get_level(switch1->pin)) {
+      xSemaphoreGive(switch_press_indication);
+    }
+    vTaskDelay(100);
+  }
+}
+
+// Bonus Task :  Blinking 3 leds sequencially when the switch is pressed ( 4th isn't considered as the port was changed
+void led_task_bonus(void *task_parameter) {
+  int leds[] = {26, 24, 18}; // Three LEDs at pins 26, 24, and 18
+
+  while (true) {
+    if (xSemaphoreTake(switch_press_indication, 1000)) {
+      // LED 1 blinks once
+      gpio1__set_high(leds[0]);
+      vTaskDelay(200);
+      gpio1__set_low(leds[0]);
+      vTaskDelay(200);
+
+      // LED 2 blinks twice
+      for (int i = 0; i < 2; i++) {
+        gpio1__set_high(leds[1]);
+        vTaskDelay(200);
+        gpio1__set_low(leds[1]);
+        vTaskDelay(200);
+      }
+
+      // LED 3 blinks three times
+      for (int i = 0; i < 3; i++) {
+        gpio1__set_high(leds[2]);
+        vTaskDelay(200);
+        gpio1__set_low(leds[2]);
+        vTaskDelay(200);
+      }
+
+      // Small delay before repeating the pattern
+      vTaskDelay(500);
+    } else {
+      puts("Timeout: No switch press indication for 1000ms");
+    }
+  }
+}
 static void create_blinky_tasks(void) {
   /**
    * Use '#if (1)' if you wish to observe how two tasks can blink LEDs
