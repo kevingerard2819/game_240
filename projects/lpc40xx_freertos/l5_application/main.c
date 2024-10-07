@@ -1,169 +1,189 @@
-
 #include "FreeRTOS.h"
 #include "board_io.h"
 #include "common_macros.h"
-#include "gpio_lab_4.h"
+#include "gpio.h"
 #include "lpc40xx.h"
 #include "periodic_scheduler.h"
-#include "semphr.h"
+#include "pwm1.h"
+#include "queue.h"
 #include "sj2_cli.h"
 #include "task.h"
 #include <stdio.h>
-
-static SemaphoreHandle_t switch_press_indication;
 
 // 'static' to make these functions 'private' to this file
 static void create_blinky_tasks(void);
 static void create_uart_task(void);
 static void blink_task(void *params);
 static void uart_task(void *params);
-void led_task(void *params);
-void switch_task(void *params);
-void led_task_sem(void *params);
-void led_task_bonus(void *task_parameter);
+static QueueHandle_t adc_to_pwm_task_queue;
 
-typedef struct {
-  /* First get gpio0 driver to work only, and if you finish it
-   * you can do the extra credit to also make it work for other Ports
-   */
-  // uint8_t port;
-
-  uint8_t pin;
-} port_pin_s;
-
-int main(void) {
-  create_blinky_tasks();
-  // create_blinky_tasks();
-  create_uart_task();
-
-  // If you have the ESP32 wifi module soldered on the board, you can try uncommenting this code
-  // See esp32/README.md for more details
-  // uart3_init();                                                                     // Also include:  uart3_init.h
-  // xTaskCreate(esp32_tcp_hello_world_task, "uart3", 1000, NULL, PRIORITY_LOW, NULL); // Include esp32_task.h
-
-  puts("Starting RTOS");
-
-  // Part 0
-  // xTaskCreate(led_task, "led1", 2048 / sizeof(void *), NULL, PRIORITY_LOW, NULL);
-
-  // Part 2
-  /*
-  static port_pin_s led1 = {26};
-  static port_pin_s led2 = {24};
-  xTaskCreate(led_task, "led1", 2048 / sizeof(void *), &led1, 1, NULL);
-  xTaskCreate(led_task, "led2", 2048 / sizeof(void *), &led2, 1, NULL);
-  */
-  // part 3
-  /*
-  switch_press_indication = xSemaphoreCreateBinary();
-  static port_pin_s switch1 = {15};
-  static port_pin_s led2 = {24};
-  xTaskCreate(switch_task, "sw1", 2048 / sizeof(void *), &switch1, 2, NULL);
-  xTaskCreate(led_task_sem, "led1", 2048 / sizeof(void *), &led2, 1, NULL);
-
-
- */
-  switch_press_indication = xSemaphoreCreateBinary();
-  static port_pin_s switch1 = {15};
-  static port_pin_s led2 = {24};
-  xTaskCreate(switch_task, "sw1", 2048 / sizeof(void *), &switch1, 2, NULL);
-  xTaskCreate(led_task_bonus, "led1", 2048 / sizeof(void *), &led2, 1, NULL);
-
-  vTaskStartScheduler(); // This function never returns unless RTOS scheduler runs out of memory and fails
-
-  return 0;
-}
-
-// Part 0 : Function for basic led blinking task (LED 1)
+// part 0
 /*
-void led_task(void *params) {
- LPC_GPIO1->DIR |= (1 << 26);
- while (1) {
-   LPC_GPIO1->PIN &= ~(1 << 26);
-   vTaskDelay(500);
-   LPC_GPIO1->PIN |= (1 << 26);
-   vTaskDelay(500);
- }
+void pin_configure_pwm_channel_as_io_pin(void)
+{
+gpio__construct_with_function(2, 0, GPIO__FUNCTION_1); // P2_0
+}
+// Part 0
+static void pwm_task(void *params)
+{
+pwm1__init_single_edge(1000);
+pin_configure_pwm_channel_as_io_pin();
+pwm1__set_duty_cycle(PWM1__2_0, 100);
+uint8_t percent = 0;
+while (1) {
+  pwm1__set_duty_cycle(PWM1__2_0, percent);
+  if (++percent > 100) {
+    percent = 0;
+  }
+  vTaskDelay(10);
+}
 }
 */
-// Part 2 : Using parameters passed to function
+
+// part 1 and 2
 /*
-void led_task(void *task_parameter) {
- const port_pin_s *led = (port_pin_s *)(task_parameter);
+void pwm_task(void *p) {
+  pwm1__init_single_edge(1000);
+  uint16_t adc_reading = 0;
+  gpio__construct_with_function(2, 0, GPIO__FUNCTION_1); // P2_0
 
+  // We only need to set PWM configuration once, and the HW will drive
+  // the GPIO at 1000Hz, and control set its duty cycle to 50%
+  uint8_t percent = 0;
+  while (1) {
+    // Implement code to receive potentiometer value from queue
+    if (xQueueReceive(adc_to_pwm_task_queue, &adc_reading, 100)) {
 
- while (true) {
-   gpio1__set_high(led->pin);
-   vTaskDelay(100);
+      float normalized_reading = adc_reading / 4095.0f;
+      int percent = (int)(pow(normalized_reading, 2) * 100);
 
-
-   gpio1__set_low(led->pin);
-   vTaskDelay(100);
- }
-}
-*/
-/*
-// Part 3 : Semaphores
-void led_task_sem(void *task_parameter) {
- const port_pin_s *led = (port_pin_s *)(task_parameter);
- while (true) {
-   if (xSemaphoreTake(switch_press_indication, 1000)) {
-     gpio1__set_high(led->pin);
-     vTaskDelay(100);
-     gpio1__set_low(led->pin);
-     vTaskDelay(100);
-   } else {
-     puts("Timeout: No switch press indication for 1000ms");
-   }
- }
-}
-*/
-void switch_task(void *task_parameter) {
-  port_pin_s *switch1 = (port_pin_s *)task_parameter;
-  gpio1__set_as_input(switch1->pin);
-  while (true) {
-    if (gpio1__get_level(switch1->pin)) {
-      xSemaphoreGive(switch_press_indication);
+      printf("ADC Reading: %d, Duty Cycle Percent: %d\n", adc_reading, percent);
+      pwm1__set_duty_cycle(PWM1__2_0, percent);
     }
+  }
+}
+
+*/
+// Part 3 and extra credits part
+
+// part 3
+/*
+void pwm_task(void *p) {
+  pwm1__init_single_edge(1000); // Initialize PWM at 1000 Hz
+  uint16_t adc_reading = 0;
+
+  // Initialize GPIO for RGB PWM
+  gpio__construct_with_function(2, 0, GPIO__FUNCTION_1); // Red
+  gpio__construct_with_function(2, 1, GPIO__FUNCTION_1); // Green
+  gpio__construct_with_function(2, 2, GPIO__FUNCTION_1); // Blue
+
+  while (1) {
+    if (xQueueReceive(adc_to_pwm_task_queue, &adc_reading, portMAX_DELAY)) {
+      // Calculate percentage for PWM duty cycle based on ADC value
+      float normalized_reading = adc_reading / 4095.0f;
+      int percent = (int)(pow(normalized_reading, 2) * 100);
+      printf("ADC Reading: %d, PWM Percent: %d\n", adc_reading, percent);
+
+      // Set duty cycle for RGB LED (using MR1 for Red, MR2 for Green, MR3 for Blue)
+      pwm1__set_duty_cycle(PWM1__2_0, percent); // Control Red LED
+      pwm1__set_duty_cycle(PWM1__2_1, percent); // Control Green LED
+      pwm1__set_duty_cycle(PWM1__2_2, percent); // Control Blue LED
+
+      // Print the values of the Match Registers
+      printf("MR0: %d, MR1: %d, MR2: %d, MR3: %d\n", LPC_PWM1->MR0, LPC_PWM1->MR1, LPC_PWM1->MR2, LPC_PWM1->MR3);
+    }
+  }
+}
+*/
+
+/// extra credits
+
+void pwm_task(void *p) {
+  pwm1__init_single_edge(1000); // Initialize PWM at 1000 Hz
+  uint16_t adc_reading = 0;
+
+  // Initialize GPIO for RGB PWM
+  gpio__construct_with_function(2, 0, GPIO__FUNCTION_1); // Red
+  gpio__construct_with_function(2, 1, GPIO__FUNCTION_1); // Green
+  gpio__construct_with_function(2, 2, GPIO__FUNCTION_1); // Blue
+
+  while (1) {
+    if (xQueueReceive(adc_to_pwm_task_queue, &adc_reading, portMAX_DELAY)) {
+      
+      float normalized_reading = adc_reading / 4095.0f;
+      int percent = (int)(pow(normalized_reading, 2) * 100);
+      printf("ADC Reading: %d, PWM Percent: %d\n", adc_reading, percent);
+
+      // Map the potentiometer value to RGB values
+      uint8_t red_duty_cycle = 0;
+      uint8_t green_duty_cycle = 0;
+      uint8_t blue_duty_cycle = 0;
+
+      // Create color combinations based on the potentiometer value
+      if (adc_reading < 1365) { // 0 - 1364 maps to Red
+        red_duty_cycle = percent;
+        green_duty_cycle = 0;
+        blue_duty_cycle = 0;
+      } else if (adc_reading < 2730) { // 1365 - 2730 maps to Yellow (Red + Green)
+        red_duty_cycle = percent;
+        green_duty_cycle = percent;
+        blue_duty_cycle = 0;
+      } else { // 2730 - 4095 maps to Green to Blue transition
+        red_duty_cycle = 0;
+        green_duty_cycle = percent;
+        blue_duty_cycle = percent;
+      }
+
+      // Set duty cycles for the RGB LED
+      pwm1__set_duty_cycle(PWM1__2_0, red_duty_cycle);   // Control Red LED
+      pwm1__set_duty_cycle(PWM1__2_1, green_duty_cycle); // Control Green LED
+      pwm1__set_duty_cycle(PWM1__2_2, blue_duty_cycle);  // Control Blue LED
+
+      // Print the values of the Match Registers
+      printf("MR0: %d, MR1: %d, MR2: %d, MR3: %d\n", LPC_PWM1->MR0, LPC_PWM1->MR1, LPC_PWM1->MR2, LPC_PWM1->MR3);
+    }
+  }
+}
+
+void adc_pin_initialize(void) {
+  LPC_IOCON->P0_25 &= ~(1 << 7);
+  LPC_IOCON->P0_25 &= ~(0b111 << 3);
+  gpio__construct_with_function(0, 25, GPIO__FUNCTION_1); // calling the API from gpio.h
+}
+
+void adc_task(void *p) 
+{
+  adc_pin_initialize();
+  adc__initialize();
+  adc__enable_burst_mode();
+  static uint16_t adc_value = 0;
+
+  while (1)
+   {
+    LPC_ADC->CR |= (1 << 2); // Selecting the ADC channel number
+    adc_value = adc__get_channel_reading_with_burst_mode(2);
+    float adc_voltage = (adc_value * 3.3f) / 4095.0f;
+    printf("ADC Value: %d, Voltage: %.3fV\n", adc_value, adc_voltage);
+    xQueueSend(adc_to_pwm_task_queue, &adc_value, 0);
     vTaskDelay(100);
   }
 }
 
-// Bonus Task :  Blinking 3 leds sequencially when the switch is pressed ( 4th isn't considered as the port was changed
-void led_task_bonus(void *task_parameter) {
-  int leds[] = {26, 24, 18}; // Three LEDs at pins 26, 24, and 18
+int main(void) {
+  create_blinky_tasks();
+  create_uart_task();
 
-  while (true) {
-    if (xSemaphoreTake(switch_press_indication, 1000)) {
-      // LED 1 blinks once
-      gpio1__set_high(leds[0]);
-      vTaskDelay(200);
-      gpio1__set_low(leds[0]);
-      vTaskDelay(200);
+  adc_to_pwm_task_queue = xQueueCreate(1, sizeof(uint16_t)); // making a queue
 
-      // LED 2 blinks twice
-      for (int i = 0; i < 2; i++) {
-        gpio1__set_high(leds[1]);
-        vTaskDelay(200);
-        gpio1__set_low(leds[1]);
-        vTaskDelay(200);
-      }
+  xTaskCreate(pwm_task, "PWM", 1024 / sizeof(void *), NULL, 1, NULL);
+  xTaskCreate(adc_task, "ADC", 1024 / sizeof(void *), NULL, 1, NULL);
 
-      // LED 3 blinks three times
-      for (int i = 0; i < 3; i++) {
-        gpio1__set_high(leds[2]);
-        vTaskDelay(200);
-        gpio1__set_low(leds[2]);
-        vTaskDelay(200);
-      }
+  puts("Starting RTOS");
+  vTaskStartScheduler(); // Start the FreeRTOS scheduler
 
-      // Small delay before repeating the pattern
-      vTaskDelay(500);
-    } else {
-      puts("Timeout: No switch press indication for 1000ms");
-    }
-  }
+  return 0;
 }
+
 static void create_blinky_tasks(void) {
   /**
    * Use '#if (1)' if you wish to observe how two tasks can blink LEDs

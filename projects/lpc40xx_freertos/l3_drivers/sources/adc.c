@@ -51,3 +51,22 @@ uint16_t adc__get_adc_value(adc_channel_e channel_num) {
 
   return result;
 }
+
+void adc__enable_burst_mode(void) {
+  const uint8_t burst_mode_bit = 0x10;              // 16 in hexadecimal
+  const uint32_t clear_conversion_bits = (7 << 24); // Same as (0b111 << 24), just written in decimal
+
+  // Enable burst mode by setting the 16th bit
+  LPC_ADC->CR |= (1 << burst_mode_bit);
+
+  // Clear bits [26:24] for conversion to reset before starting burst mode
+  LPC_ADC->CR &= ~clear_conversion_bits;
+}
+
+uint16_t adc__get_channel_reading_with_burst_mode(uint8_t channel_number) {
+
+  const uint16_t adc_12bit_mask = 0x0FFF;
+
+  // Extract the 12-bit result from bits [15:4] of the data register
+  return (LPC_ADC->DR[channel_number] >> 4) & adc_12bit_mask;
+}
