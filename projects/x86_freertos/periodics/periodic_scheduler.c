@@ -57,11 +57,16 @@ static void periodic_scheduler__check_flag(periodic_scheduler_s *periodic_task, 
   if (periodic_task->ticks_elapsed >= periodic_task->task_delay_in_ticks) {
     periodic_task->ticks_elapsed = 0;
 
-    if (periodic_task->task_finished_flag) {
+    if (periodic_task->task_finished_flag) 
+    {
       periodic_task->task_finished_flag = false;
-    } else {
-      // NVIC_SystemReset();
-      puts("SYSTEM RESET SHOULD HAPPEN");
+    } 
+    else 
+    {
+      fprintf(stderr, "periodic_callbacks__%uHz exceeded the tick limit.\nThe board is resetting.",
+              (unsigned) (1000 / periodic_task->task_delay_in_ticks));
+      vTaskDelay(3 * 1000);
+      NVIC_SystemReset();
     }
   }
 }

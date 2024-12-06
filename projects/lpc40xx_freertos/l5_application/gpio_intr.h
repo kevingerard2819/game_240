@@ -1,8 +1,7 @@
 
 #include "stdint.h"
 
-typedef enum 
-{
+typedef enum {
   GPIO_INTR__FALLING_EDGE,
   GPIO_INTR__RISING_EDGE,
 } gpio_interrupt_e;
