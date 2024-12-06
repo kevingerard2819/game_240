@@ -2,6 +2,8 @@
 #include "block_generator.h"
 #include "game_screens.h"
 #include "led_driver.h"
+#include "joystick_buttons.h"
+
 #include "stdbool.h"
 
 #include "lpc40xx.h"
@@ -51,6 +53,9 @@ static volatile ball_slope_e ball_slope = POSITIVE_ONE;
 static volatile ball_position_s ball_pos;
 static volatile ball_position_s next_pos;
 static volatile uint8_t paddle_length = 0;
+static volatile uint8_t paddle_start_col = 0;
+static volatile uint8_t paddle_end_col = 0;
+
 
 static void game_state_machine__generate_paddle_and_ball(void) {
   const uint8_t initial_paddle_length = 5;
@@ -69,6 +74,9 @@ static void game_state_machine__generate_paddle_and_ball(void) {
       paddle_length = initial_paddle_length;
     }
   }
+  paddle_start_col = 30;
+  paddle_end_col = paddle_start_col + paddle_length - 1;
+
 }
 
 static void game_state_machine__negate_ball_slope(void) {
@@ -187,6 +195,9 @@ static bool game_state_machine__check_for_collision_with_paddle(uint8_t row, uin
   bool paddle_detected = false;
   uint8_t color_of_next_pixel = led_driver__get_led_matix_value(row, col);
   if (color_of_next_pixel == WHITE) {
+    fprintf(stderr, "paddle hit!\n");
+        
+
     paddle_detected = true;
   }
   return paddle_detected;
@@ -264,10 +275,7 @@ static void game_state_machine__update_ball_position(void) {
   game_state_machine__calculate_next_ball_position();
   color_of_next_pixel = game_state_machine__get_color_of_next_pos();
 
-  fprintf(stderr, "-----\n");
-  fprintf(stderr, "ball_c: %i, ball_r: %i, ball_s: %i, ball_d: %i\n", ball_pos.ball_col, ball_pos.ball_row, ball_slope,
-          ball_pos.ball_dir);
-  fprintf(stderr, "next_c: %i, next_r: %i\n", next_pos.ball_col, next_pos.ball_row);
+  
 
   colission_with_block = game_state_machine__check_for_block_collision(next_pos.ball_row, next_pos.ball_col);
   colission_with_wall = game_state_machine__check_for_wall_collision(next_pos.ball_row, next_pos.ball_col);
@@ -503,6 +511,36 @@ void game_state_machine__test_setup(void) {
 }
 
 #endif
+
+static void game_state_machine__move_paddle(uint8_t starting_col, uint8_t ending_col) {
+  for (int i = 0; i < paddle_length; i++) {
+    led_driver__set_pixel(bottom_of_game_area, paddle_start_col + i, BLACK);
+  }
+  paddle_start_col = starting_col;
+  paddle_end_col = ending_col;
+  for (int j = 0; j < paddle_length; j++) {
+    led_driver__set_pixel(bottom_of_game_area, paddle_start_col + j, WHITE);
+  }
+}
+
+void game_state_machine__update_paddle_position(joystick_position_e position) {
+  if (position == JOYSTICK_LEFT) {
+    if (paddle_start_col == left_wall_of_game_area) {
+      // dont move paddle, will go out of bounds
+    } else {
+      game_state_machine__move_paddle(paddle_start_col - 1, paddle_end_col - 1);
+    }
+  } else if (position == JOYSTICK_RIGHT) {
+    if (paddle_end_col == right_wall_of_game_area) {
+      // dont move paddle, will go out of bounds
+    } else {
+      game_state_machine__move_paddle(paddle_start_col + 1, paddle_end_col + 1);
+    }
+  } else if (position == NONE) {
+    // NONE - paddle shouldn't move
+  }
+}
+
 
 void game_state_machine__run_game(void) {
 

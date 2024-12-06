@@ -505,6 +505,7 @@ int main(void) {
 #include "game_state_machine.h"
 #include "led_driver.h"
 #include "task.h"
+#include <stdio.h>
 
 static void update_display_task(void *pv) {
   for (;;) {
@@ -516,6 +517,26 @@ static void update_display_task(void *pv) {
 static void game_state_machine_task(void *pv) {
   for (;;) {
     game_state_machine__run_game();
+    vTaskDelay(36);
+  }
+}
+
+static void update_paddle_position(void *pv) {
+  static joystick_position_e joystick_position = NONE;
+  for (;;) {
+    joystick_position = joystick_buttons__get_joystick_position();
+    // switch (joystick_position) {
+    // case NONE:
+    //   fprintf(stderr, "NONE\n");
+    //   break;
+    // case JOYSTICK_LEFT:
+    //   fprintf(stderr, "LEFT\n");
+    //   break;
+    // case JOYSTICK_RIGHT:
+    //   fprintf(stderr, "RIGHT\n");
+    //   break;
+    // }
+    game_state_machine__update_paddle_position(joystick_position);
     vTaskDelay(12);
   }
 }
@@ -524,7 +545,9 @@ int main(void) {
   led_driver__init_gpio_pins_for_matrix();
   game_screens__set_matrix_to(GAME);
   game_state_machine__test_setup();
+  joystick_buttons__joystick_and_button_init();
 
+  xTaskCreate(update_paddle_position, "update_paddle_position", 4096 / sizeof(void *), NULL, PRIORITY_MEDIUM, NULL);
   xTaskCreate(update_display_task, "update_display_task", 4096 / sizeof(void *), NULL, PRIORITY_HIGH, NULL);
   xTaskCreate(game_state_machine_task, "game_state_machine_task", 10000 / sizeof(void *), NULL, PRIORITY_HIGH, NULL);
 
