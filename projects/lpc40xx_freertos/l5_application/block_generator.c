@@ -12,16 +12,25 @@ static const uint8_t end_of_block = 7;
 
 static const uint8_t number_of_blocks_per_row = 64 / block_length;
 
+// static void block_generator__generate_block(uint8_t row, uint8_t col, color_code_s color) {
+//   for (int i = 0; i < block_height; i++) {
+//     for (int j = 0; j < block_length; j++) {
+//       if (i == 1) {
+//         if (j == beginning_of_block || j == end_of_block) {
+//           led_driver__set_pixel(row + i, col + j, color);
+//         }
+//       } else {
+//         led_driver__set_pixel(row + i, col + j, color);
+//       }
+//     }
+//   }
+// }
+
 static void block_generator__generate_block(uint8_t row, uint8_t col, color_code_s color) {
+  // Fill all pixels inside the block with the specified color
   for (int i = 0; i < block_height; i++) {
     for (int j = 0; j < block_length; j++) {
-      if (i == 1) {
-        if (j == beginning_of_block || j == end_of_block) {
-          led_driver__set_pixel(row + i, col + j, color);
-        }
-      } else {
-        led_driver__set_pixel(row + i, col + j, color);
-      }
+      led_driver__set_pixel(row + i, col + j, color);
     }
   }
 }
