@@ -1,8 +1,8 @@
 #include "game_state_machine.h"
 #include "block_generator.h"
 #include "game_screens.h"
-#include "led_driver.h"
 #include "joystick_buttons.h"
+#include "led_driver.h"
 
 #include "stdbool.h"
 
@@ -56,7 +56,6 @@ static volatile uint8_t paddle_length = 0;
 static volatile uint8_t paddle_start_col = 0;
 static volatile uint8_t paddle_end_col = 0;
 
-
 static void game_state_machine__generate_paddle_and_ball(void) {
   const uint8_t initial_paddle_length = 5;
   const uint8_t last_row = 63;
@@ -76,7 +75,6 @@ static void game_state_machine__generate_paddle_and_ball(void) {
   }
   paddle_start_col = 30;
   paddle_end_col = paddle_start_col + paddle_length - 1;
-
 }
 
 static void game_state_machine__negate_ball_slope(void) {
@@ -196,7 +194,6 @@ static bool game_state_machine__check_for_collision_with_paddle(uint8_t row, uin
   uint8_t color_of_next_pixel = led_driver__get_led_matix_value(row, col);
   if (color_of_next_pixel == WHITE) {
     fprintf(stderr, "paddle hit!\n");
-        
 
     paddle_detected = true;
   }
@@ -274,8 +271,6 @@ static void game_state_machine__update_ball_position(void) {
   led_driver__set_pixel(ball_pos.ball_row, ball_pos.ball_col, BLACK);
   game_state_machine__calculate_next_ball_position();
   color_of_next_pixel = game_state_machine__get_color_of_next_pos();
-
-  
 
   colission_with_block = game_state_machine__check_for_block_collision(next_pos.ball_row, next_pos.ball_col);
   colission_with_wall = game_state_machine__check_for_wall_collision(next_pos.ball_row, next_pos.ball_col);
@@ -541,7 +536,6 @@ void game_state_machine__update_paddle_position(joystick_position_e position) {
   }
 }
 
-
 void game_state_machine__run_game(void) {
 
   static bool stage_init = true;
@@ -564,6 +558,7 @@ void game_state_machine__run_game(void) {
 
       stage_init = false;
     }
+    joystick_position_e position = joystick_buttons__get_joystick_position();
     game_state_machine__update_ball_position();
     // current_state = GAME_s;
     break;

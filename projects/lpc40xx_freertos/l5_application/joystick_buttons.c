@@ -1,29 +1,33 @@
 #include "joystick_buttons.h"
-#include "gpio.h"
-
+#include "acceleration.h"
 #include <stdbool.h>
 
-static gpio_s joystick_left;
-static gpio_s joystick_right;
-
 void joystick_buttons__joystick_and_button_init(void) {
-  /* P0_15 - Joystick Left, P0_18 - Joystick Right */
-  joystick_left = gpio__construct_as_input(GPIO__PORT_0, 15);
-  joystick_right = gpio__construct_as_input(GPIO__PORT_0, 18);
-  gpio__enable_pull_down_resistors(joystick_left);
-  gpio__enable_pull_down_resistors(joystick_right);
+  // Initialize the accelerometer instead of the joystick
+  if (acceleration__init()) {
+    printf("Accelerometer initialized successfully!\n");
+  } else {
+    printf("Failed to initialize accelerometer.\n");
+  }
 }
 
 joystick_position_e joystick_buttons__get_joystick_position(void) {
   joystick_position_e joystick_position = NONE;
-  bool joystick_left_value = gpio__get(joystick_left);
-  bool joystick_right_value = gpio__get(joystick_right);
-  if (joystick_left_value) {
+
+  // Read accelerometer data
+  acceleration__axis_data_s accel_data = acceleration__get_data();
+
+  // Thresholds for determining movement direction
+  const int16_t threshold_left = -200; // Adjust based on sensitivity
+  const int16_t threshold_right = 200;
+
+  if (accel_data.x < threshold_left) {
     joystick_position = JOYSTICK_LEFT;
-  } else if (joystick_right_value) {
+  } else if (accel_data.x > threshold_right) {
     joystick_position = JOYSTICK_RIGHT;
   } else {
     joystick_position = NONE;
   }
+
   return joystick_position;
 }
